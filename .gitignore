@@ -1,0 +1,11 @@
+# Salaisuudet
+firmware/crimpnet/secrets.h
+.env
+
+# Serverin data ja riippuvuudet
+server/node_modules/
+server/data/
+
+# Käyttöjärjestelmä ja editorit
+.DS_Store
+.vscode/

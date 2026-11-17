@@ -1,0 +1,17 @@
+{
+  "name": "crimpnet-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CrimpNet: voimamittarin serveri ja käyttöliittymä",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "fake": "node tools/fake-device.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

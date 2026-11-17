@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CrimpNet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --chalk: #E9ECEE;     /* tausta: liitupölyn harmaa */
+    --panel: #F6F7F8;
+    --slate: #1C2226;     /* teksti */
+    --muted: #5E686F;
+    --line:  #C9CFD3;
+    --hold:  #C8204F;     /* käyrä ja aktiiviset tilat: otteen pinkki */
+    --ok:    #1F7A4D;
+    --warn:  #A15C00;
+    --font: "Barlow", system-ui, sans-serif;
+    --font-num: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --chalk: #15191C; --panel: #1D2226; --slate: #E6EAED; --muted: #98A2A9;
+      --line: #333B41; --hold: #FF5C8A; --ok: #4CC38A; --warn: #E9A23B;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--chalk); color: var(--slate);
+    font: 400 16px/1.5 var(--font);
+    padding: max(16px, env(safe-area-inset-top)) 16px 32px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 24px; }
+  @media (min-width: 900px) { .wrap { grid-template-columns: 1.6fr 1fr; align-items: start; } }
+
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; grid-column: 1 / -1; }
+  h1 { font: 700 1.5rem/1 var(--font-num); margin: 0; letter-spacing: .01em; }
+  .conn { font-size: .9rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .conn[data-state="ok"] .dot { background: var(--ok); }
+  .conn[data-state="wait"] .dot { background: var(--warn); }
+
+  /* Iso lukema on sivun ainoa korostus */
+  .readout { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .force { font: 700 clamp(5.5rem, 28vw, 11rem)/.82 var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .force small { font-size: .3em; font-weight: 500; color: var(--muted); margin-left: .15em; letter-spacing: 0; }
+  .force.pulling { color: var(--hold); }
+  .side { padding-bottom: .4rem; display: grid; gap: 2px; color: var(--muted); }
+  .side b { font: 700 2rem/1 var(--font-num); color: var(--slate); font-variant-numeric: tabular-nums; }
+
+  .chart { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  canvas { display: block; width: 100%; height: 260px; }
+  .chart-note { position: absolute; top: 8px; left: 12px; font-size: .85rem; color: var(--muted); }
+  .chart-note button { margin-left: 8px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button, input {
+    font: 500 1rem var(--font); color: var(--slate);
+    border: 1px solid var(--line); background: var(--panel);
+    border-radius: 6px; padding: 10px 14px; min-height: 44px;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--slate); color: var(--chalk); border-color: var(--slate); }
+  button:disabled { opacity: .45; cursor: default; }
+  :focus-visible { outline: 3px solid var(--hold); outline-offset: 2px; }
+  input { width: 6.5rem; }
+  .cal { display: flex; gap: 8px; align-items: center; }
+  .msg { font-size: .9rem; color: var(--muted); min-height: 1.5em; width: 100%; }
+
+  h2 { font: 700 1.25rem/1.2 var(--font-num); margin: 0 0 8px; }
+  .history { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  li { border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li button {
+    width: 100%; border: 0; background: none; border-radius: 0; padding: 10px 2px;
+    display: grid; grid-template-columns: 4.5rem 1fr auto; gap: 12px; align-items: baseline; text-align: left;
+  }
+  li button[aria-current="true"] { color: var(--hold); }
+  .peak { font: 700 1.6rem/1 var(--font-num); font-variant-numeric: tabular-nums; }
+  .meta { font-size: .88rem; color: var(--muted); }
+  .when { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>CrimpNet</h1>
+    <div class="conn" id="conn" data-state="off"><span class="dot"></span><span id="connText">Yhdistetään serveriin</span></div>
+  </header>
+
+  <main style="display:grid; gap:20px; min-width:0">
+    <section class="readout" aria-live="off">
+      <div class="force" id="force">0.0<small>kg</small></div>
+      <div class="side">
+        <span>Vedon huippu</span>
+        <b id="peak">–</b>
+      </div>
+    </section>
+
+    <div class="chart">
+      <canvas id="chart" aria-label="Voimakäyrä viimeiseltä 10 sekunnilta"></canvas>
+      <div class="chart-note" id="chartNote" hidden></div>
+    </div>
+
+    <section class="controls">
+      <button class="primary" id="tareBtn" disabled>Nollaa</button>
+      <form class="cal" id="calForm">
+        <label for="calKg">Tunnettu paino</label>
+        <input id="calKg" type="number" inputmode="decimal" min="0.1" step="0.1" placeholder="kg" required>
+        <button id="calBtn" disabled>Kalibroi</button>
+      </form>
+      <div class="msg" id="msg" role="status"></div>
+    </section>
+  </main>
+
+  <aside class="history">
+    <h2>Vedot</h2>
+    <ol id="pulls"></ol>
+    <p class="empty" id="empty">Ei vielä vetoja. Vedä yli 2 kg, niin veto tallentuu tähän.</p>
+  </aside>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const WINDOW_MS = 10000;
+
+let live = [];            // [[t, kg], ...] viimeiset 10 s laitteen ajassa
+let pullPeak = 0;         // käynnissä olevan vedon huippu
+let pulling = false;
+let frozen = null;        // historiasta valittu veto
+let ws;
+
+// --- Yhteys serveriin ----------------------------------------------------
+function setConn(state, text) {
+  $("conn").dataset.state = state;
+  $("connText").textContent = text;
+  const on = state === "ok";
+  $("tareBtn").disabled = !on;
+  $("calBtn").disabled = !on;
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ui`);
+  ws.onopen = () => setConn("wait", "Odotetaan laitetta");
+  ws.onclose = () => { setConn("off", "Ei yhteyttä serveriin, yritetään uudelleen"); setTimeout(connect, 2000); };
+  ws.onmessage = (e) => handle(JSON.parse(e.data));
+}
+
+function handle(msg) {
+  if (msg.type === "device") {
+    msg.connected ? setConn("ok", "Laite yhdistetty") : setConn("wait", "Odotetaan laitetta");
+  } else if (msg.type === "samples") {
+    for (const s of msg.s) addSample(s);
+  } else if (msg.type === "pull") {
+    addPullRow(msg.pull, true);
+  } else if (msg.type === "status") {
+    const texts = { tared: "Nollattu.", calibrated: `Kalibroitu (${msg.cpk.toFixed(0)} lukemaa/kg).` };
+    if (texts[msg.msg]) say(texts[msg.msg]);
+    else if (msg.msg.startsWith("calibrate")) say(msg.msg.replace("calibrate: ", "Kalibrointi epäonnistui: "));
+    if (msg.fake) $("connText").textContent = "Laite yhdistetty, simuloitu data";
+  } else if (msg.type === "error") {
+    say(msg.msg);
+  }
+}
+
+function addSample([t, kg]) {
+  live.push([t, kg]);
+  if (live.length && t < live[live.length - 2]?.[0]) live = [[t, kg]]; // laite käynnistyi uudelleen
+  while (live.length && live[0][0] < t - WINDOW_MS) live.shift();
+
+  // Uusi veto nollaa huipun; edellisen vedon huippu jää näkyviin lepovaiheessa
+  if (kg >= 2 && !pulling) { pulling = true; pullPeak = 0; }
+  else if (pulling && kg < 1) { pulling = false; }
+  if (pulling) pullPeak = Math.max(pullPeak, kg);
+
+  $("force").firstChild.nodeValue = Math.max(0, kg).toFixed(1);
+  $("force").classList.toggle("pulling", pulling);
+  $("peak").textContent = pullPeak ? pullPeak.toFixed(1) + " kg" : "–";
+}
+function say(text) { $("msg").textContent = text; }
+
+// --- Komennot ------------------------------------------------------------
+$("tareBtn").onclick = () => { ws.send(JSON.stringify({ cmd: "tare" })); say("Nollataan, pidä laite kuormittamattomana..."); };
+$("calForm").onsubmit = (e) => {
+  e.preventDefault();
+  const kg = parseFloat($("calKg").value);
+  ws.send(JSON.stringify({ cmd: "calibrate", kg }));
+  say(`Kalibroidaan ${kg} kg:n painolla, pidä paino paikallaan...`);
+};
+
+// --- Historia ------------------------------------------------------------
+async function loadPulls() {
+  const res = await fetch("/api/pulls");
+  const list = await res.json();
+  for (const p of list.reverse()) addPullRow(p, true);
+}
+
+function addPullRow(p, prepend) {
+  $("empty").hidden = true;
+  const li = document.createElement("li");
+  const d = new Date(p.at);
+  const rfd = p.rfdKgPerS ? `, RFD ${Math.round(p.rfdKgPerS)} kg/s` : "";
+  li.innerHTML = `<button type="button">
+      <span class="peak">${p.peakKg.toFixed(1)}</span>
+      <span class="meta">${(p.durationMs / 1000).toFixed(1)} s, keskiarvo ${p.avgKg.toFixed(1)} kg${rfd}</span>
+      <span class="when">${d.toLocaleTimeString("fi-FI", { hour: "2-digit", minute: "2-digit" })}</span>
+    </button>`;
+  li.querySelector("button").onclick = () => showPull(p.id, li.querySelector("button"));
+  prepend ? $("pulls").prepend(li) : $("pulls").append(li);
+}
+
+async function showPull(id, btn) {
+  const res = await fetch(`/api/pulls/${id}`);
+  frozen = await res.json();
+  document.querySelectorAll("li button").forEach((b) => b.removeAttribute("aria-current"));
+  btn.setAttribute("aria-current", "true");
+  const note = $("chartNote");
+  note.hidden = false;
+  note.innerHTML = `Veto ${new Date(frozen.at).toLocaleString("fi-FI")} <button type="button" id="backLive">Näytä live</button>`;
+  $("backLive").onclick = () => {
+    frozen = null; note.hidden = true;
+    document.querySelectorAll("li button").forEach((b) => b.removeAttribute("aria-current"));
+  };
+}
+
+// --- Käyrä ---------------------------------------------------------------
+const canvas = $("chart");
+const ctx = canvas.getContext("2d");
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const data = frozen ? frozen.samples : live;
+  const pad = { l: 40, r: 12, t: 32, b: 22 };
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+  let tMax, tMin;
+  if (frozen) { tMin = data[0][0]; tMax = data.at(-1)[0]; }
+  else { tMax = data.length ? data.at(-1)[0] : WINDOW_MS; tMin = tMax - WINDOW_MS; }
+  const yMax = Math.max(10, Math.ceil(Math.max(...data.map((d) => d[1]), 0) / 10) * 10);
+
+  const x = (t) => pad.l + ((t - tMin) / (tMax - tMin || 1)) * pw;
+  const y = (kg) => pad.t + ph - (Math.max(0, kg) / yMax) * ph;
+
+  // Apuviivat
+  ctx.strokeStyle = css("--line"); ctx.fillStyle = css("--muted");
+  ctx.lineWidth = 1; ctx.font = `13px ${css("--font")}`; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  const step = yMax <= 20 ? 5 : yMax <= 60 ? 10 : 20;
+  for (let v = 0; v <= yMax; v += step) {
+    ctx.beginPath(); ctx.moveTo(pad.l, y(v) + .5); ctx.lineTo(w - pad.r, y(v) + .5); ctx.stroke();
+    ctx.fillText(v, pad.l - 8, y(v));
+  }
+
+  // Huippuviiva
+  const peak = frozen ? frozen.peakKg : pullPeak;
+  if (peak) {
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = css("--muted");
+    ctx.beginPath(); ctx.moveTo(pad.l, y(peak)); ctx.lineTo(w - pad.r, y(peak)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Voimakäyrä
+  if (data.length > 1) {
+    ctx.strokeStyle = css("--hold"); ctx.lineWidth = 2.5; ctx.lineJoin = "round";
+    ctx.beginPath();
+    data.forEach(([t, kg], i) => (i ? ctx.lineTo(x(t), y(kg)) : ctx.moveTo(x(t), y(kg))));
+    ctx.stroke();
+  }
+  requestAnimationFrame(draw);
+}
+
+connect();
+loadPulls().catch(() => {});
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
